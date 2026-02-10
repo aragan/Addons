@@ -4,9 +4,9 @@ windower.register_event('load',function ()
 end)
 
 _addon.name = 'Skillchainer'
-_addon.author = 'Otamarai, Aragan ' -- add prime weaopnskills and fix buttons
+_addon.author = 'Otamarai'
 _addon.commands = {'skillchainer','sc'}
-_addon.version = '1.20'
+_addon.version = '1.7'
 require 'strings'
 require 'logger'
 config = require('config')
@@ -28,7 +28,8 @@ ws_turn = 1
 p2_name = ''
 now = 0
 her_fucking_AM = 0
-AM_WS = ''
+AM_flag_self = 0
+AM_WS_self = ''
 AM_flag_other = 0
 AM_WS_other = ''
 AM_override = 'off'
@@ -39,15 +40,13 @@ nexttime = os.clock()
 delay = 0
 runtomob = 'off'
 use_ws = 'on'
-use_am = 'off'
-pause = 'on'
-voke = 'on'
+pause = 'off'
+voke = 'off'
+autoRA = false
+autoStopRA = true
+autoRATP = 1000
 assistTarget = false
 assistEnabled = false
-tp_threshold = 1000
-use_RA = 'off'
-pull_RA = 'off'
-autopull_target = 0
 
 
 
@@ -66,43 +65,6 @@ settings = config.load(sctxt)
 sc_info = texts.new('${value}', settings)
 
 
-sc_info_color = {pull=true,run=true,provoke=true,ra=true,pullra=true,assist=true,ws=true,am=true,selfsc=true,pause=true}
-
-
---Blacklist for certain mobs that you never want to engage
-blist_targets_file = files.new('blist_targets.lua')
-if blist_targets_file:exists() then
-
-else
-	blist_targets = {}
-	blist_targets_file:write('return ' .. T(blist_targets):tovstring())
-end
-blist_targets = require('blist_targets')
-
---Common container words to ignore (avoids targeting chests/coffers/lockboxes, etc.)
-blist_name_words = {
-	treasure = true,
-	casket = true,
-	caskets = true,
-	coffer = true,
-	coffers = true,
-	chest = true,
-	chests = true,
-	lockbox = true,
-	strongbox = true,
-	crate = true,
-	cache = true,
-}
-
-local function name_has_blist_word(name)
-	if not name then return false end
-	for w in name:lower():gmatch("%a+") do
-		if blist_name_words[w] then
-			return true
-		end
-	end
-	return false
-end
 
 
 mob_targets_file = files.new('mob_targets.lua')
@@ -134,107 +96,40 @@ function showBox()
 	
 	list = list..'Job: '..job..'\n'
 	
-	if sc_info_color.pull then
-		if pull == 'on' then
-			list = list..'\\cs(0,255,0)Auto Pulling: '..pull..'\\cr\n'
-		else
-			list = list..'\\cs(255,0,0)Auto Pulling: '..pull..'\\cr\n'
-		end
+	if pull == 'on' then
+		list = list..'\\cs(0,255,0)Auto Pulling: '..pull..'\\cr\n'
 	else
-		list = list..'\\cs(255,255,0)Auto Pulling: '..pull..'\\cr\n'
+		list = list..'\\cs(255,0,0)Auto Pulling: '..pull..'\\cr\n'
 	end
 	
-	if sc_info_color.run then
-		if runtomob == 'on' then
-			list = list..'\\cs(0,255,0)Run to Mob: '..runtomob..'\\cr\n'
-		else
-			list = list..'\\cs(255,0,0)Run to Mob: '..runtomob..'\\cr\n'
-		end
+	if runtomob == 'on' then
+		list = list..'\\cs(0,255,0)Run to Mob: '..runtomob..'\\cr\n'
 	else
-		list = list..'\\cs(255,255,0)Run to Mob: '..runtomob..'\\cr\n'
+		list = list..'\\cs(255,0,0)Run to Mob: '..runtomob..'\\cr\n'
 	end
 	
-	if sc_info_color.provoke then
-		if voke == 'on' then
-			list = list..'\\cs(0,255,0)Provoke: '..voke..'\\cr\n'
-		else
-			list = list..'\\cs(255,0,0)Provoke: '..voke..'\\cr\n'
-		end
+	if voke == 'on' then
+		list = list..'\\cs(0,255,0)Provoke: '..voke..'\\cr\n'
 	else
-		list = list..'\\cs(255,255,0)Provoke: '..voke..'\\cr\n'
+		list = list..'\\cs(255,0,0)Provoke: '..voke..'\\cr\n'
 	end
 	
-	if sc_info_color.ra then
-		if use_RA == 'on' then
-			list = list..'\\cs(0,255,0)Ranged: '..use_RA..'\\cr\n'
-		else
-			list = list..'\\cs(255,0,0)Ranged: '..use_RA..'\\cr\n'
-		end
-	else
-		list = list..'\\cs(255,255,0)Ranged: '..use_RA..'\\cr\n'
-	end
-	
-	if sc_info_color.pullra then
-		if pull_RA == 'on' then
-			list = list..'\\cs(0,255,0)Ranged Pull: '..pull_RA..'\\cr\n'
-		else
-			list = list..'\\cs(255,0,0)Ranged Pull: '..pull_RA..'\\cr\n'
-		end
-	else
-		list = list..'\\cs(255,255,0)Ranged Pull: '..pull_RA..'\\cr\n'
-	end
-	
-	if sc_info_color.assist then
-		if assistEnabled and assistTarget then
-			list = list..'Assist: \\cs(0,255,0)'..assistTarget..'\\cr\n'
-		elseif not assistEnabled then
-			list = list..'Assist: \\cs(255,0,0)'..(assistTarget or 'off')..'\\cr\n'
-		end	
-	else
-		if assistEnabled and assistTarget then
-			list = list..'Assist: \\cs(255,255,0)'..assistTarget..'\\cr\n'
-		elseif not assistEnabled then
-			list = list..'Assist: \\cs(255,255,0)'..(assistTarget or 'off')..'\\cr\n'
-		end	
-	end
-	
+	if assistEnabled and assistTarget then
+		list = list..'Assist: \\cs(0,255,0)'..assistTarget..'\\cr\n'
+	elseif not assistEnabled then
+		list = list..'Assist: \\cs(255,0,0)'..(assistTarget or 'off')..'\\cr\n'
+	end	
 	
 	if use_ws == 'on' then
-		if sc_info_color.ws then
-			list = list..'\\cs(0,255,0)Weaponskilling: '..job_ws_list[job].ws_a..'\\cr\n'
-			list = list..'\\cs(0,255,0)TP Threshold: '..tp_threshold..'\\cr\n'
-		else
-			list = list..'\\cs(255,255,0)Weaponskilling: '..job_ws_list[job].ws_a..'\\cr\n'
-			list = list..'\\cs(255,255,0)TP Threshold: '..tp_threshold..'\\cr\n'
-		end
+		list = list..'\\cs(0,255,0)Weaponskilling: '..job_ws_list[job].ws_a..'\\cr\n'
 	else
-		if sc_info_color.ws then
-			list = list..'\\cs(255,0,0)Weaponskilling: '..use_ws..'\\cr\n'
-			list = list..'\\cs(255,0,0)TP Threshold: '..tp_threshold..'\\cr\n'
-		else
-			list = list..'\\cs(255,255,0)Weaponskilling: '..use_ws..'\\cr\n'
-			list = list..'\\cs(255,255,0)TP Threshold: '..tp_threshold..'\\cr\n'
-		end
+		list = list..'\\cs(255,0,0)Weaponskilling: '..use_ws..'\\cr\n'
 	end
 	
-	if sc_info_color.am then
-		if use_am == 'on' then
-			list = list..'\\cs(0,255,0)Aftermath: '..AM_WS..'\\cr\n'
-		else
-			list = list..'\\cs(255,0,0)Aftermath: '..use_am..'\\cr\n'
-		end
+	if self_SC == 'on' then
+		list = list..'\\cs(0,255,0)Self SC: '..self_SC..'\\cr\n'
 	else
-		list = list..'\\cs(255,255,0)Aftermath: '..use_am..'\\cr\n'
-	end
-	
-	if sc_info_color.selfsc then
-		if self_SC == 'on' then
-			list = list..'\\cs(0,255,0)Self SC: '..self_SC..'\\cr\n'
-		else
-			list = list..'\\cs(255,0,0)Self SC: '..self_SC..'\\cr\n'
-		end
-	else
-		list = list..'\\cs(255,255,0)Self SC: '..self_SC..'\\cr\n'
+		list = list..'\\cs(255,0,0)Self SC: '..self_SC..'\\cr\n'
 	end
 	
 	
@@ -261,19 +156,10 @@ function showBox()
 		end
 	end
 	
-	
 	if pause == 'on' then
-		if sc_info_color.pause then
-			list = list..'\\cs(255,0,0)Skillchainer Paused.'
-		else
-			list = list..'\\cs(255,255,0)Skillchainer Paused.'
-		end
+		list = list..'\\cs(255,0,0)Skillchainer Paused.'
 	else
-		if sc_info_color.pause then
-			list = list..'\\cs(0,255,0)Skillchainer Active.'
-		else
-			list = list..'\\cs(255,255,0)Skillchainer Active.'
-		end
+		list = list..'\\cs(0,255,0)Skillchainer Active.'
 	end
 	
 	
@@ -300,7 +186,7 @@ job_ws_list = {
 	['BLM'] = {ws_a='Shattersoul', ws_b='Shattersoul'},
 	['RDM'] = {ws_a='Chant du Cygne', ws_b='Savage Blade'},
 	['THF'] = {ws_a='Rudra\'s Storm', ws_b='Evisceration'},
-	['PLD'] = {ws_a='Knights of Round', ws_b='Savage Blade'},
+	['PLD'] = {ws_a='Chant du Cygne', ws_b='Savage Blade'},
 	['DRK'] = {ws_a='Cross Reaper', ws_b='Entropy'},
 	['BST'] = {ws_a='Ruinator', ws_b='Decimation'},
 	['BRD'] = {ws_a='Rudra\'s Storm', ws_b='Evisceration'},
@@ -314,7 +200,7 @@ job_ws_list = {
 	['PUP'] = {ws_a='Victory Smite', ws_b='Stringing Pummel'},
 	['DNC'] = {ws_a='Rudra\'s Storm', ws_b='Evisceration'},
 	['SCH'] = {ws_a='Shattersoul', ws_b='Shattersoul'},
-	['GEO'] = {ws_a='Black Halo',ws_b='Hexa Strike'},
+	['GEO'] = {ws_a='Hexa Strike', ws_b='Black Halo'},
 	['RUN'] = {ws_a='Resolution', ws_b='Dimidiation'},
 }
 
@@ -365,9 +251,9 @@ windower.register_event('prerender', function()
 		nexttime = curtime
 		delay = 0.2
 		
-		--if os.clock() > (now + 180) then	--AM time is 3 mins, reset it after it expires
-			--her_fucking_AM = 0
-		--end
+		if os.clock() > (now + 180) then	--AM time is 3 mins, reset it after it expires
+			her_fucking_AM = 0
+		end
 		if pause == 'on' then return end					--If pause then exit
 		local recasts = windower.ffxi.get_ability_recasts()
 		local player = windower.ffxi.get_player()
@@ -387,31 +273,6 @@ windower.register_event('prerender', function()
 		--Pull a mob if auto pull is on
 		if player.in_combat == false and player.status == 0 and party_member == 1 and pull == 'on' then
 			getNewMob(getAggroMob())
-		end
-
-		--If we have no pull ability, run to the closest mob we selected.
-		if pull == 'on' and runtomob == 'on' and player.status == 0 and autopull_target and autopull_target ~= 0 then
-			local autopull_mob = windower.ffxi.get_mob_by_id(autopull_target)
-			if not autopull_mob or autopull_mob.claim_id ~= 0 or not autopull_mob.valid_target or autopull_mob.hpp == 0 or check_blist_target(autopull_mob.name) then
-				autopull_target = 0
-				windower.ffxi.run(false)
-			else
-				local dist = math.sqrt(autopull_mob.distance)
-				if dist <= 20 then
-					pullmob = packets.new('outgoing', 0x01A, {
-						['Target'] = autopull_mob.id,
-						['Target Index'] = autopull_mob.index,
-						['Category'] = 0x02,
-					})
-					packets.inject(pullmob)
-					delay = 1
-					autopull_target = 0
-				else
-					local angle = (math.atan2((autopull_mob.y - self_vector.y), (autopull_mob.x - self_vector.x))*180/math.pi)*-1
-					windower.ffxi.turn((angle):radian())
-					windower.ffxi.run(true)
-				end
-			end
 		end
 		
 		--Handle engaging in combat with target
@@ -459,7 +320,7 @@ windower.register_event('prerender', function()
 		elseif not assistEnabled then
 			if player.in_combat == true and player.status ~= 1 then		--If there's a party claimed mob
 				windower.send_command('input /ta <bt>')
-				if windower.ffxi.get_mob_by_target('t') and windower.ffxi.get_mob_by_target('t').claim_id ~= 0 and not check_blist_target(windower.ffxi.get_mob_by_target('t').name) then
+				if windower.ffxi.get_mob_by_target('t') and windower.ffxi.get_mob_by_target('t').claim_id ~= 0 then
 					engagetarget = packets.new('outgoing', 0x01A, {
 						['Target'] = windower.ffxi.get_mob_by_target('t').id,
 						['Target Index'] = windower.ffxi.get_mob_by_target('t').index,
@@ -490,12 +351,12 @@ windower.register_event('prerender', function()
 				current_mob = mob_id
 				delay = 1
 				showBox()
-			elseif player.status == 1 and (checkActor(windower.ffxi.get_mob_by_target('t')) or (windower.ffxi.get_mob_by_target('t') and check_blist_target(windower.ffxi.get_mob_by_target('t').name))) then
+			elseif player.status == 1 and checkActor(windower.ffxi.get_mob_by_target('t')) then
 				disengagetarget = packets.new('outgoing', 0x01A, {
 					['Target'] = windower.ffxi.get_mob_by_target('t').id,
 					['Target Index'] = windower.ffxi.get_mob_by_target('t').index,
 					['Category'] = 0x04,
-				})
+				})	
 				packets.inject(disengagetarget)
 			elseif player.status == 1 and player.target_index and windower.ffxi.get_mob_by_index(player.target_index) and windower.ffxi.get_mob_by_index(player.target_index).hpp >= 1 then		--If we're engaged in combat
 				if windower.ffxi.get_mob_by_target('t') and windower.ffxi.get_mob_by_target('t').id ~= current_mob then
@@ -515,7 +376,6 @@ windower.register_event('prerender', function()
 				in_combat = false
 				mob_id = 0
 				ws_turn = 1
-				autopull_target = 0
 				showBox()
 			end
 		end
@@ -530,25 +390,25 @@ windower.register_event('prerender', function()
 					useJA('Provoke', '<t>')
 				end
 				if runtomob == 'on' then
-					if math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 20 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) >= 4 and player.status == 1 then
+					if math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 20 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) >= 3 and player.status == 1 then
 						windower.ffxi.run(true)
 					else
 						windower.ffxi.run(false)
 					end
 				end
-				if use_am == 'on' and not isBuffActive(272) and self_SC == 'off' then	--Put up AM
-					if player.vitals.tp == 3000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) < ws_list[AM_WS].range then
-						useWS(AM_WS, '<t>')
+				if autoRA and (player.vitals.tp <= 1000 or not autoStopRA) then
+					useRA()
+				end
+				if AM_flag_self == 1 and not isBuffActive(272) then		--Put up AM if you have it
+					if player.vitals.tp == 3000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 7 then
+						useWS(AM_WS_self, '<t>')
 					end
-				elseif use_ws == 'on' and player.vitals.tp >= tp_threshold and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) < ws_list[job_ws_list[job].ws_a].range and self_SC == 'off' then	--WS all the things
+				elseif player.vitals.tp >= 1000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 7 and self_SC == 'off' and use_ws == 'on' then	--WS all the things
 					useWS(job_ws_list[job].ws_a, '<t>')
-				elseif self_SC == 'on' and player.vitals.tp >= 1000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) < ws_list[self_sc(job, ws_turn)].range then	--Doing the multi step thang... or gonna try
+				elseif player.vitals.tp >= 1000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 7 and self_SC == 'on' then	--Doing the multi step thang... or gonna try
 					if self_sc(job, ws_turn) ~= 0 then
 						useWS(ws_list[self_sc(job, ws_turn)].en, '<t>')
 					end
-				elseif use_RA == 'on' then
-					recast_buffs(job)	--use buffs before doing ranged attacks
-					useRA('<t>')
 				end
 				
 			elseif party_size == 2 then		--If in a party
@@ -563,9 +423,16 @@ windower.register_event('prerender', function()
 					end
 				end
 			
-				if player.vitals.tp >= 1000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 7 then
+				if AM_flag_self == 1 and not isBuffActive(272) then		--Put up AM if you have it, and reset the WS turn to 1
+					if player.vitals.tp == 3000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 7 then
+						useWS(AM_WS_self, '<t>')
+						ws_turn = 1
+					end
+				elseif player.vitals.tp >= 1000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 7 then
 					if party_member == 1 then		--If you're party member 1
-						if ws_turn == 1 and windower.ffxi.get_party().p1.tp >= 700 then
+						if AM_flag_other == 1 and her_fucking_AM == 0 and AM_override == 0 then
+							useWS(job_ws_list[job].ws_b, '<t>')
+						elseif ws_turn == 1 and windower.ffxi.get_party().p1.tp >= 700 then
 							useWS(job_ws_list[job].ws_b, '<t>')
 						elseif ws_turn == 3 then
 							useWS(job_ws_list[job].ws_a, '<t>')
@@ -573,7 +440,9 @@ windower.register_event('prerender', function()
 							useWS(job_ws_list[job].ws_b, '<t>')
 						end
 					elseif party_member == 2 then	--If you're party member 2
-						if ws_turn == 2 then
+						if AM_flag_other == 1 and her_fucking_AM == 0 and AM_override == 0 then
+							useWS(job_ws_list[job].ws_b, '<t>')
+						elseif ws_turn == 2 then
 							useWS(job_ws_list[job].ws_b, '<t>')
 						elseif ws_turn == 4 and windower.ffxi.get_party().p1.tp >= 700 then
 							useWS(job_ws_list[job].ws_b, '<t>')
@@ -662,12 +531,8 @@ windower.register_event('action', function(act)	--Grab the ID of the mob attacki
 	local player = windower.ffxi.get_player()
 	local party = windower.ffxi.get_party()
 	
-	if act and act.actor_id then
-		local mob = windower.ffxi.get_mob_by_id(act.actor_id)
-		if checkTargets(act.targets) and mob and mob.is_npc == true and not checkActor(act.actor_id) then
-			mob_id = act.actor_id
-		end
-	
+	if checkTargets(act.targets) and windower.ffxi.get_mob_by_id(act.actor_id).is_npc == true and not checkActor(act.actor_id) then
+		mob_id = act.actor_id
 	--elseif mob_id == act.actor_id and not checkTargets(act.targets) and player.status == 1 and windower.ffxi.get_mob_by_target('t') and windower.ffxi.get_mob_by_target('t').id == mob_id then
 		--mob_id = 0
 		--windower.send_command('input /a off')
@@ -687,21 +552,21 @@ windower.register_event('action', function(act)	--Grab the ID of the mob attacki
 	end
 	
 	if party_size == 2 then
-		--if AM_flag_other == 1 and her_fucking_AM == 0 and AM_override == 'off' then		--When party member uses their AM weaponskill, set flag, set the time and reset the WS turn to 1
-			--if party.party1_count > 1 and windower.ffxi.get_info().zone == party.p1.zone and act.actor_id == windower.ffxi.get_mob_by_name(party.p1.name).id and ws_id == ws_list[AM_WS_other].id and message == 185 then
-				--ws_turn = 1
-				--her_fucking_AM = 1
-				--now = os.clock()
-				--ws_id = 0
-				--message = 0
-			--end
-		--elseif AM_override == 'on' then
-			--if party.party1_count > 1 and windower.ffxi.get_info().zone == party.p1.zone and act.actor_id == windower.ffxi.get_mob_by_name(party.p1.name).id and ws_id == ws_list[AM_WS_other].id and message == 185 then
-				--ws_turn = 1
-				--ws_id = 0
-				--message = 0
-			--end
-		--end
+		if AM_flag_other == 1 and her_fucking_AM == 0 and AM_override == 'off' then		--When party member uses their AM weaponskill, set flag, set the time and reset the WS turn to 1
+			if party.party1_count > 1 and windower.ffxi.get_info().zone == party.p1.zone and act.actor_id == windower.ffxi.get_mob_by_name(party.p1.name).id and ws_id == ws_list[AM_WS_other].id and message == 185 then
+				ws_turn = 1
+				her_fucking_AM = 1
+				now = os.clock()
+				ws_id = 0
+				message = 0
+			end
+		elseif AM_override == 'on' then
+			if party.party1_count > 1 and windower.ffxi.get_info().zone == party.p1.zone and act.actor_id == windower.ffxi.get_mob_by_name(party.p1.name).id and ws_id == ws_list[AM_WS_other].id and message == 185 then
+				ws_turn = 1
+				ws_id = 0
+				message = 0
+			end
+		end
 		if ws_turn == 1 then	--Cycle through weaponskill turns
 			if act.actor_id == player.id and ws_id == ws_list[job_ws_list[job].ws_b].id and party_member == 1 and message == 185 then
 				ws_turn = 2
@@ -803,15 +668,7 @@ function listSelfSC()
 	end
 end
 
-function set_color(name)
-    for i, v in pairs(sc_info_color) do
-        if i == name then
-            sc_info_color[i] = false
-        else
-            sc_info_color[i] = true
-        end
-    end
-end
+
 
 
 --Adds a self skillchain weaponskill/step combination
@@ -862,39 +719,6 @@ function remove_mob_target(mob)
 	end
 	mob_targets_file:write('return ' .. T(mob_targets):tovstring())
 end
-
---Add a mob to the blacklist *WARNING, WILL NEVER ENGAGE THIS MOB*
-function add_blist_target(mob)
-	if not blist_targets[mob] then
-		blist_targets[mob] = {}
-		blist_targets_file:write('return ' .. T(blist_targets):tovstring())
-		windower.add_to_chat(7,'Added target: '..mob..' to blacklist.')
-	end
-end
-
---Remove a mob from the blacklist
-function remove_blist_target(mob)
-	if blist_targets[mob] then
-		blist_targets[mob] = nil
-		windower.add_to_chat(7,'Removed target: '..mob..' from blacklist.')
-	end
-	blist_targets_file:write('return ' .. T(blist_targets):tovstring())
-end
-
-
-function check_blist_target(mob)
-	for i,v in pairs(blist_targets) do
-		if i and i == mob then
-			return true
-		end
-	end
-	if name_has_blist_word(mob) then
-		return true
-	end
-	return false
-end
-
-
 
 --Update job when you change jobs
 windower.register_event('job change',function (main_job_id, main_job_level, sub_job_id, sub_job_level)
@@ -961,7 +785,7 @@ function getAggroMob()
 	local spell_recasts = windower.ffxi.get_spell_recasts()
 	local subjob = player.sub_job
 	for i,v in pairs(windower.ffxi.get_mob_array()) do
-		if v.valid_target and v.id ~= player.id and v.claim_id == 0 and v.is_npc and not player.in_combat and v.status == 1 and v.spawn_type == 16 and v.name ~= 'Motsognir' then	-- check for unclaimed mob in range
+		if v.valid_target and v.id ~= player.id and v.claim_id == 0 and v.is_npc and not player.in_combat and v.status == 1 and v.spawn_type == 16 then	-- check for unclaimed mob in range
 			if math.sqrt(v.distance) <= 10 then
 				return v.id
 			end
@@ -977,12 +801,6 @@ function getNewMob(aggro_mob_id)
 	local player = windower.ffxi.get_player()
 	local spell_recasts = windower.ffxi.get_spell_recasts()
 	local subjob = player.sub_job
-	local self_vector = windower.ffxi.get_mob_by_index(player.index or 0)
-	local function face_mob(mob)
-		if not mob or not self_vector then return end
-		local angle = (math.atan2((mob.y - self_vector.y), (mob.x - self_vector.x))*180/math.pi)*-1
-		windower.ffxi.turn((angle):radian())
-	end
 	local closestmob = nil
 	local mobdistance = 25
 	if aggro_mob_id ~= 0 then
@@ -994,39 +812,16 @@ function getNewMob(aggro_mob_id)
 		packets.inject(pullmob)
 		delay = 1.2
 	elseif aggro_mob_id == 0 then
-		local function find_closest(require_list)
-			for i,v in pairs(windower.ffxi.get_mob_array()) do
-				if v.valid_target and v.id ~= player.id and v.claim_id == 0 and v.is_npc and not player.in_combat and v.status == 0 and not check_blist_target(v.name) then -- check for unclaimed mob in range
-					if not require_list or mob_targets[v.name] then
-						local dist = math.sqrt(v.distance)
-						if dist <= mobdistance then
-							mobdistance = dist
-							closestmob = v.id
-						end
-					end
+		for i,v in pairs(windower.ffxi.get_mob_array()) do
+			if v.valid_target and v.id ~= player.id and v.claim_id == 0 and v.is_npc and not player.in_combat and v.status == 0 and mob_targets[v.name] then -- check for unclaimed mob in range
+				if math.sqrt(v.distance) <= mobdistance then
+					mobdistance = math.sqrt(v.distance)
+					closestmob = v.id
 				end
 			end
 		end
-
-		find_closest(true)
-		if not closestmob then
-			-- If no listed mob was found, fall back to the closest valid mob of any name.
-			find_closest(false)
-		end
 		if closestmob then
-			if mobdistance <= 24 and pull_RA == 'on' then
-				face_mob(windower.ffxi.get_mob_by_id(closestmob))
-				pullmob = packets.new('outgoing', 0x01A, {
-					['Target'] = closestmob,
-					['Target Index'] = windower.ffxi.get_mob_by_id(closestmob).index,
-					['Category'] = 0x10,
-					--['Param']
-					['_unknown1'] = 0,
-				})
-				packets.inject(pullmob)
-				delay = 1.5
-				return
-			elseif mobdistance <= 17.8 and recasts[5] and recasts[5] == 0 and (job == 'WAR' or subjob == 'WAR') then
+			if mobdistance <= 17.8 and recasts[5] and recasts[5] == 0 and (job == 'WAR' or subjob == 'WAR') then
 				pullmob = packets.new('outgoing', 0x01A, {
 					['Target'] = closestmob,
 					['Target Index'] = windower.ffxi.get_mob_by_id(closestmob).index,
@@ -1048,20 +843,16 @@ function getNewMob(aggro_mob_id)
 				packets.inject(pullmob)
 				delay = 1
 				return
-			else
-				-- Fallback: if too far, run to it; otherwise engage.
-				if mobdistance <= 20 then
-					pullmob = packets.new('outgoing', 0x01A, {
-						['Target'] = closestmob,
-						['Target Index'] = windower.ffxi.get_mob_by_id(closestmob).index,
-						['Category'] = 0x02,
-					})
-					packets.inject(pullmob)
-					delay = 1
-					return
-				end
-				autopull_target = closestmob
-				return
+			elseif mobdistance <= 20 and spell_recasts[220] and spell_recasts[220] == 0 and job == 'RUN' then
+				pullmob = packets.new('outgoing', 0x01A, {
+					['Target'] = closestmob,
+					['Target Index'] = windower.ffxi.get_mob_by_id(closestmob).index,
+					['Category'] = 0x03,
+					['Param'] = 220,		--Poison
+					['_unknown1'] = 0,
+				})
+				packets.inject(pullmob)
+				delay = 1
 			end
 		end
 	end
@@ -1139,11 +930,6 @@ windower.register_event('addon command', function(...)
 			end
 		end
 		showBox()
-	elseif  command[1]:lower() == 'settp' or command[1]:lower() == 'tpset' or command[1]:lower() == 'tp' then
-		if tonumber(command[2]) ~= nil and tonumber(command[2]) >= 1000 and tonumber(command[2]) <= 3000 then
-			tp_threshold = tonumber(command[2])
-		end
-		showBox()
 	elseif command[1] == 'run' then
 		if command[2] then
 			if command[2] == 'on' then
@@ -1174,44 +960,10 @@ windower.register_event('addon command', function(...)
 			end
 		end
 		showBox()
-	elseif command[1] == 'ranged' or command[1] == 'usera' or command[1] == 'ra' or command[1] == 'autora' then
-		if command[2] then
-			if command[2] == 'on' then
-				use_RA = 'on'
-			elseif command[2] == 'off' then
-				use_RA = 'off'
-			end
-		elseif not command[2] then
-			if use_RA == 'on' then
-				use_RA = 'off'
-			elseif use_RA == 'off' then
-				use_RA = 'on'
-			end
-		end
-		showBox()
-	elseif command[1] == 'rpull' or command[1] == 'rangedpull' or command[1] == 'pullra' then
-		if command[2] then
-			if command[2] == 'on' then
-				pull_RA = 'on'
-			elseif command[2] == 'off' then
-				pull_RA = 'off'
-			end
-		elseif not command[2] then
-			if pull_RA == 'on' then
-				pull_RA = 'off'
-			elseif pull_RA == 'off' then
-				pull_RA = 'on'
-			end
-		end
-		showBox()
 	elseif command[1] == 'addmob' and command[2] then
 		add_mob_target(command[2])
 	elseif command[1] == 'removemob' and command[2] then
 		remove_mob_target(command[2])
-	elseif command[1] == 'addblist' and command[2] then
-		add_blist_target(command[2])
-	elseif command[1] == 'removeblist' and command[2] then
-		remove_blist_target(command[2])
 	elseif command[1]:lower() == 'addws' and command[2] and command[3] then
 		addSelfSC(job, command[2]:ucfirst(), command[3])
 		showBox()
@@ -1235,29 +987,6 @@ windower.register_event('addon command', function(...)
 			end
 		end
 		showBox()
-	elseif command[1]:lower() == 'am' then
-		if command[2] then
-			if command[2]:lower() == 'on' and AM_WS ~= '' then
-				use_am = 'on'
-			elseif command[2]:lower() == 'off' then
-				use_am = 'off'
-			else
-				local amws = ws_list[command[2]]
-				if amws then
-					AM_WS = command[2]
-					windower.add_to_chat(7, 'Aftermath weaponskill changed to '..command[2])
-				else
-					windower.add_to_chat(7, 'Unable to update aftermath weaponskill to '..command[2].. ' - please check spelling')
-				end
-			end
-		elseif not command[2] then
-			if use_am == 'on' then
-				use_am = 'off'
-			elseif use_am == 'off' and AM_WS ~= '' then
-				use_am = 'on'
-			end
-		end
-		showBox()
 	elseif command[1]:lower() == 'mainws' then
 		if command[2] then
 			local mainws = ws_list[command[2]]
@@ -1268,7 +997,6 @@ windower.register_event('addon command', function(...)
 				windower.add_to_chat(7, 'Unable to update main weaponskill to '..command[2]:ucfirst().. ' - please check spelling')
 			end
 		end
-		showBox()
 	elseif command[1]:lower() == 'subws' then
 		if command[2] then
 			local subws = ws_list[command[2]]
@@ -1279,6 +1007,49 @@ windower.register_event('addon command', function(...)
 				windower.add_to_chat(7, 'Unable to update sub weaponskill to '..command[2]:ucfirst().. ' - please check spelling')
 			end
 		end
+	elseif command[1] == 'autora' then
+		if command[2] then
+			if command[2] == 'on' then
+				autoRA = true
+				windower.add_to_chat(7, 'Auto Shooting Enabled.')
+			elseif command[2] == 'off' then
+				autoRA = false
+				windower.add_to_chat(7, 'Auto Shooting Disabled.')
+			end
+		elseif not command[2] then
+			if autoRA then
+				autoRA = false
+				windower.add_to_chat(7, 'Auto Shooting Disabled.')
+			elseif not autoRA then
+				autoRA = true
+				windower.add_to_chat(7, 'Auto Shooting Enabled.')
+			end
+		end
+		showBox()
+	elseif command[1] == 'autostopra' then
+		if command[2] then
+			if command[2] == 'on' then
+				autoStopRA = true
+				windower.add_to_chat(7, 'Shooting will stop at '..autoRATP..' TP.')
+			elseif command[2] == 'off' then
+				autoStopRA = false
+				windower.add_to_chat(7, 'Shooting will continue indefinitely.')
+			else
+				local raTP = tonumber(command[2])
+				if raTP and raTP > 1000 and raTP <= 3000 then
+					autoRATP = raTP
+				end
+			end
+		elseif not command[2] then
+			if autoStopRA then
+				autoStopRA = false
+				windower.add_to_chat(7, 'Shooting will continue indefinitely.')
+			elseif not autoStopRA then
+				autoStopRA = true
+				windower.add_to_chat(7, 'Shooting will stop at '..autoRATP..' TP.')
+			end
+		end
+		showBox()
 	elseif command[1]:lower() == 'assist' then
 		if command[2] then
 			if command[2] == 'on' and assistTarget then
@@ -1330,17 +1101,9 @@ windower.register_event('addon command', function(...)
 		windower.add_to_chat(7, 'sc listws - lists all the self skillchain steps and weaponskills for current job')
 		windower.add_to_chat(7, 'sc ws on|off - turns the use of weaponskills on or off')
 		windower.add_to_chat(7, 'sc mainws|subws "Weaponskill" - changes the weaponskills used when either solo spamming or skillchaining with another player')
-		windower.add_to_chat(7, 'sc tp #(1000-3000) - sets tp threshold when single weaponskilling to #')
-		windower.add_to_chat(7, 'sc am on|off|ws - sets using aftermath on or off, or sets the weaponskill for it, remember to use double quotes for the WS ""')
-		windower.add_to_chat(7, 'sc ranged on|off - sets auto ranged attacks on or off')
 		windower.add_to_chat(7, 'sc addmob|removemob mob - adds or removes mob to the target auto pull list')
-		windower.add_to_chat(7, 'sc addblist|removeblist mob - adds or removes mob to the target no-engage blacklist')
-		windower.add_to_chat(7, 'sc rpull on|off - Turns ranged attack pulling on or off')
     end
 end)
-
-
-
 
 
 windower.register_event('mouse', function(type, x, y, delta, blocked)
@@ -1362,64 +1125,47 @@ windower.register_event('mouse', function(type, x, y, delta, blocked)
 		 count = count + 1
 	end
 	
-	if type == 0 then
+	--[[local smx, smy = texts.extents(hl_sets)
+	local setsbutton_lines = hl_sets:text():count('\n') + 1
+	local shx = (x - spellsettings.pos.x)
+	local shy = (y - spellsettings.pos.y)
+	local setslocation = {}
+	setslocation.offset = smy / setsbutton_lines
+	setslocation[1] = {}
+	setslocation[1].ya = 1
+	setslocation[1].yb = setslocation.offset
+	local setscount = 2
+	while setscount <= setsbutton_lines do
+		 setslocation[setscount] = {}
+		 setslocation[setscount].ya = setslocation[setscount - 1].yb
+		 setslocation[setscount].yb = setslocation[setscount - 1].yb + setslocation.offset
+		 setscount = setscount + 1
+	end]]
+	
+	
+	if type == 2 then
 		if sc_info:hover(x, y) and sc_info:visible() then
 			for i, v in ipairs(location) do
-				local switchc = {}
-				if party_size == 1 then
-					switchc = {[1]="",[2]="",[3]="pull",[4]="run",[5]="provoke",[6]="ra",[7]="rpull",[8]="assist",[9]="ws",[10]="ws",[11]="am",[12]="selfsc"}
-				elseif party_size > 1 then
-					switchc = {[1]="",[2]="",[3]="",[4]="",[5]="pull",[6]="run",[7]="provoke",[8]="ra",[9]="rpull",[10]="assist",[11]="ws",[12]="ws",[13]="am",[14]="selfsc"}
-				end
-				switchc[table.getn(location)] = "pause"
+				local switchb = {}
+				switchb = {[1]="",[2]="",[3]="pull",[4]="run",[5]="provoke",[6]="assist",[7]="ws",[8]="selfsc"}
+				switchb[table.getn(location)] = "pause"
 				if hy > location[i].ya and hy < location[i].yb then
-					set_color(switchc[i])
-					showBox()
-				end
-            end
-		else
-			set_color("none")
-			showBox()
-		end
-	elseif type == 2 then
-		if sc_info:hover(x, y) and sc_info:visible() then
-			for i, v in ipairs(location) do
-				if hy > location[i].ya and hy < location[i].yb then
-					local name = ""
-					if party_size == 1 then
-						name = ({ "", "", "pull", "run", "provoke", "ra", "rpull", "assist", "ws", "ws", "am", "selfsc" })[i] or ""
-					elseif party_size > 1 then
-						name = ({ "", "", "", "pull", "run", "provoke", "ra", "rpull", "assist", "ws", "ws", "am", "selfsc" })[i] or ""
+					if switchb[i] and switchb[i] ~= "" then
+						windower.send_command("sc "..switchb[i])
 					end
-					if i == #location then name = "pause" end
-	
-					if name == "pull" then
-						pull = (pull == 'on') and 'off' or 'on'
-					elseif name == "run" then
-						runtomob = (runtomob == 'on') and 'off' or 'on'
-					elseif name == "provoke" then
-						voke = (voke == 'on') and 'off' or 'on'
-					elseif name == "ra" then
-						use_RA = (use_RA == 'on') and 'off' or 'on'
-					elseif name == "rpull" then
-						pull_RA = (pull_RA == 'on') and 'off' or 'on'
-					elseif name == "assist" then
-						assistEnabled = not assistEnabled
-					elseif name == "ws" then
-						use_ws = (use_ws == 'on') and 'off' or 'on'
-					elseif name == "am" then
-						use_am = (use_am == 'on') and 'off' or 'on'
-					elseif name == "selfsc" then
-						self_SC = (self_SC == 'on') and 'off' or 'on'
-					elseif name == "pause" then
-						pause = (pause == 'on') and 'off' or 'on'
-					end
-	
-					set_color(name)
-					showBox()
 				end
 			end
 		end
+		--[[if hl_sets:hover(x, y) and hl_sets:visible() then
+			for i, v in ipairs(setslocation) do	
+				if shy > setslocation[i].ya and shy < setslocation[i].yb then
+					local num = i-1
+					if num > 0 then
+						windower.send_command("hl loadset "..num)
+					end
+				end
+			end
+		end]]
 	end
 end)
 

@@ -1,0 +1,28 @@
+CHANGELOG
+
+Version 1.10
+----
+Added an option to pull with ranged attacks
+
+
+Version 1.9
+----
+Added a blacklist to ignore and disengage certain mobs
+
+
+Version 1.8
+----
+Added hover colours for selectable options in the box
+
+
+
+Version 1.7
+----
+Added distance check based on WS
+
+
+
+Version 1.6
+----
+Added TP Threshold for spamming weaponskills
+Added Aftermath weaponskill capabilities

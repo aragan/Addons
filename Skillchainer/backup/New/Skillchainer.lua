@@ -79,31 +79,6 @@ else
 end
 blist_targets = require('blist_targets')
 
---Common container words to ignore (avoids targeting chests/coffers/lockboxes, etc.)
-blist_name_words = {
-	treasure = true,
-	casket = true,
-	caskets = true,
-	coffer = true,
-	coffers = true,
-	chest = true,
-	chests = true,
-	lockbox = true,
-	strongbox = true,
-	crate = true,
-	cache = true,
-}
-
-local function name_has_blist_word(name)
-	if not name then return false end
-	for w in name:lower():gmatch("%a+") do
-		if blist_name_words[w] then
-			return true
-		end
-	end
-	return false
-end
-
 
 mob_targets_file = files.new('mob_targets.lua')
 if mob_targets_file:exists() then
@@ -887,9 +862,6 @@ function check_blist_target(mob)
 		if i and i == mob then
 			return true
 		end
-	end
-	if name_has_blist_word(mob) then
-		return true
 	end
 	return false
 end

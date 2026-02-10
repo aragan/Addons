@@ -79,31 +79,6 @@ else
 end
 blist_targets = require('blist_targets')
 
---Common container words to ignore (avoids targeting chests/coffers/lockboxes, etc.)
-blist_name_words = {
-	treasure = true,
-	casket = true,
-	caskets = true,
-	coffer = true,
-	coffers = true,
-	chest = true,
-	chests = true,
-	lockbox = true,
-	strongbox = true,
-	crate = true,
-	cache = true,
-}
-
-local function name_has_blist_word(name)
-	if not name then return false end
-	for w in name:lower():gmatch("%a+") do
-		if blist_name_words[w] then
-			return true
-		end
-	end
-	return false
-end
-
 
 mob_targets_file = files.new('mob_targets.lua')
 if mob_targets_file:exists() then
@@ -888,9 +863,6 @@ function check_blist_target(mob)
 			return true
 		end
 	end
-	if name_has_blist_word(mob) then
-		return true
-	end
 	return false
 end
 
@@ -977,12 +949,6 @@ function getNewMob(aggro_mob_id)
 	local player = windower.ffxi.get_player()
 	local spell_recasts = windower.ffxi.get_spell_recasts()
 	local subjob = player.sub_job
-	local self_vector = windower.ffxi.get_mob_by_index(player.index or 0)
-	local function face_mob(mob)
-		if not mob or not self_vector then return end
-		local angle = (math.atan2((mob.y - self_vector.y), (mob.x - self_vector.x))*180/math.pi)*-1
-		windower.ffxi.turn((angle):radian())
-	end
 	local closestmob = nil
 	local mobdistance = 25
 	if aggro_mob_id ~= 0 then
@@ -1015,7 +981,6 @@ function getNewMob(aggro_mob_id)
 		end
 		if closestmob then
 			if mobdistance <= 24 and pull_RA == 'on' then
-				face_mob(windower.ffxi.get_mob_by_id(closestmob))
 				pullmob = packets.new('outgoing', 0x01A, {
 					['Target'] = closestmob,
 					['Target Index'] = windower.ffxi.get_mob_by_id(closestmob).index,
