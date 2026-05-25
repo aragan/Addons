@@ -257,7 +257,7 @@ function recast_buffs(job)
 			useJA('Valiance', '<me>')
 		elseif not isBuffActive(528) and player.status == 1 then
 			delay = 17
-			-- windower.send_command('wait 2;input /ja "Unda" <me>;wait 6;input /ja "Unda" <me>;wait 6;input /ja "Unda" <me>')
+			-- sc_safe_send_command('wait 2;input /ja "Unda" <me>;wait 6;input /ja "Unda" <me>;wait 6;input /ja "Unda" <me>')
 		end
 	end
 	
@@ -276,33 +276,33 @@ end
 
 --Use a job ability
 function useJA(ja_name, target)
-	windower.send_command('input /ja "'..ja_name..'" '..target)
+	sc_safe_send_command('input /ja "'..ja_name..'" '..target)
 	delay = 1.2
 	return
 end
 
 --Use magic
 function useMA(ma_name, target)
-	windower.send_command('input /ma "'..ma_name..'" '..target)
+	sc_safe_send_command('input /ma "'..ma_name..'" '..target)
 	delay = 4.2
 	return
 end
 
 --Use weaponskill
 function useWS(ws_name, target)
-	windower.send_command('input /ws "'..ws_name..'" '..target)
+	sc_safe_send_command('input /ws "'..ws_name..'" '..target)
 	delay = 2
 	return
 end
 
 function usePet(pet_ability, target)
-	windower.send_command('input /pet "'..pet_ability..'" '..target)
+	sc_safe_send_command('input /pet "'..pet_ability..'" '..target)
 	delay = 1.2
 	return
 end
 
 function useRA(target)
-	windower.send_command('input /shoot '..target)
+	sc_safe_send_command('input /shoot '..target)
 	delay = 4
 	return
 end
@@ -420,4 +420,5 @@ function isInParty(name)
 	end
 	return false
 end
+
 

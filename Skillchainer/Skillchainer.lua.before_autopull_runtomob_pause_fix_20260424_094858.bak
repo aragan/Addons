@@ -15,52 +15,6 @@ files = require 'files'
 res = require('resources')
 packets = require('packets')
 ws_list = require('weaponskills')
-
-sc_death_notice_shown = false
-
-function sc_player_is_dead()
-	local player = windower.ffxi.get_player()
-	if not player then return false end
-	local vitals = player.vitals or {}
-	return (player.hpp and player.hpp <= 0) or (vitals.hp and vitals.hp <= 0)
-end
-
-function sc_stop_for_death()
-	if not sc_player_is_dead() then
-		sc_death_notice_shown = false
-		return false
-	end
-	pause = 'on'
-	in_combat = false
-	mob_id = 0
-	current_mob = 0
-	autopull_target = 0
-	ws_turn = 1
-	sc_safe_run(false)
-	if not sc_death_notice_shown then
-		windower.add_to_chat(7, 'Skillchainer paused: player is dead.')
-		sc_death_notice_shown = true
-	end
-	return true
-end
-
-function sc_safe_send_command(command)
-	if sc_stop_for_death() then return false end
-	windower.send_command(command)
-	return true
-end
-
-function sc_safe_inject(packet)
-	if sc_stop_for_death() then return false end
-	packets.inject(packet)
-	return true
-end
-
-function sc_safe_run(enabled)
-	if enabled and sc_stop_for_death() then return false end
-	windower.ffxi.run(enabled)
-	return true
-end
 require('skillchainer_functions')
 
 --Default stuff
@@ -247,10 +201,10 @@ function showBox()
 	
 	if use_ws == 'on' then
 		if sc_info_color.ws then
-			list = list..'\\cs(0,255,0)Weaponskilling: '..sc_job_ws_a()..'\\cr\n'
+			list = list..'\\cs(0,255,0)Weaponskilling: '..job_ws_list[job].ws_a..'\\cr\n'
 			list = list..'\\cs(0,255,0)TP Threshold: '..tp_threshold..'\\cr\n'
 		else
-			list = list..'\\cs(255,255,0)Weaponskilling: '..sc_job_ws_a()..'\\cr\n'
+			list = list..'\\cs(255,255,0)Weaponskilling: '..job_ws_list[job].ws_a..'\\cr\n'
 			list = list..'\\cs(255,255,0)TP Threshold: '..tp_threshold..'\\cr\n'
 		end
 	else
@@ -364,32 +318,6 @@ job_ws_list = {
 	['RUN'] = {ws_a='Resolution', ws_b='Dimidiation'},
 }
 
-local sc_unsupported_ws = {ws_a='off', ws_b='off'}
-
-function sc_get_job_ws()
-	if job and job_ws_list and job_ws_list[job] then
-		return job_ws_list[job]
-	end
-	return sc_unsupported_ws
-end
-
-function sc_job_ws_a()
-	return sc_get_job_ws().ws_a or 'off'
-end
-
-function sc_job_ws_b()
-	return sc_get_job_ws().ws_b or 'off'
-end
-
-function sc_job_has_ws()
-	local ws = sc_get_job_ws()
-	return ws and ws.ws_a and ws.ws_a ~= 'off' and ws_list and ws_list[ws.ws_a] ~= nil
-end
-
-function sc_job_has_party_ws()
-	local ws = sc_get_job_ws()
-	return ws and ws.ws_a and ws.ws_b and ws.ws_a ~= 'off' and ws.ws_b ~= 'off' and ws_list and ws_list[ws.ws_a] ~= nil and ws_list[ws.ws_b] ~= nil
-end
 
 skillchains = {
     [288] = 'Light',
@@ -440,7 +368,6 @@ windower.register_event('prerender', function()
 		--if os.clock() > (now + 180) then	--AM time is 3 mins, reset it after it expires
 			--her_fucking_AM = 0
 		--end
-		if sc_stop_for_death() then return end				--If dead, stop movement before any pause exit
 		if pause == 'on' then return end					--If pause then exit
 		local recasts = windower.ffxi.get_ability_recasts()
 		local player = windower.ffxi.get_player()
@@ -448,6 +375,11 @@ windower.register_event('prerender', function()
 		local info = windower.ffxi.get_info()
 		local zone = res.zones[info.zone].name				--Get the zone name
 		if areas_Cities:contains(zone) then return end		--If we're in a town, exit
+		if player and player.hpp == 0 then					--If we're dead, pause the skillchainer then exit
+			pause = 'on'
+			windower.add_to_chat(7, 'Skillchainer paused.')
+			return
+		end
 		
 		target = windower.ffxi.get_mob_by_index(player.target_index or 0)
 		local self_vector = windower.ffxi.get_mob_by_index(player.index or 0)
@@ -462,7 +394,7 @@ windower.register_event('prerender', function()
 			local autopull_mob = windower.ffxi.get_mob_by_id(autopull_target)
 			if not autopull_mob or autopull_mob.claim_id ~= 0 or not autopull_mob.valid_target or not autopull_mob.is_npc or autopull_mob.spawn_type ~= 16 or autopull_mob.hpp == 0 or check_blist_target(autopull_mob.name) then
 				autopull_target = 0
-				sc_safe_run(false)
+				windower.ffxi.run(false)
 			else
 				local dist = math.sqrt(autopull_mob.distance)
 				if dist <= 20 then
@@ -471,13 +403,13 @@ windower.register_event('prerender', function()
 						['Target Index'] = autopull_mob.index,
 						['Category'] = 0x02,
 					})
-					sc_safe_inject(pullmob)
+					packets.inject(pullmob)
 					delay = 1
 					autopull_target = 0
 				else
 					local angle = (math.atan2((autopull_mob.y - self_vector.y), (autopull_mob.x - self_vector.x))*180/math.pi)*-1
 					windower.ffxi.turn((angle):radian())
-					sc_safe_run(true)
+					windower.ffxi.run(true)
 				end
 			end
 		end
@@ -497,7 +429,7 @@ windower.register_event('prerender', function()
 						['Target Index'] = mob_target.index,
 						['Category'] = 0x02,
 					})
-					sc_safe_inject(engagetarget)
+					packets.inject(engagetarget)
 					delay = 1
 					in_combat = true
 					showBox()
@@ -507,7 +439,7 @@ windower.register_event('prerender', function()
 						['Target Index'] = mob_target.index,
 						['Category'] = 0x0F,
 					})
-					sc_safe_inject(switchtarget)
+					packets.inject(switchtarget)
 					delay = 1
 					in_combat = true
 					showBox()
@@ -518,7 +450,7 @@ windower.register_event('prerender', function()
 					--['Target Index'] = mob_target.index,
 					['Category'] = 0x04,
 				})
-				sc_safe_inject(disengagetarget)
+				packets.inject(disengagetarget)
 				in_combat = false
 				ws_turn = 1
 				showBox()
@@ -526,14 +458,14 @@ windower.register_event('prerender', function()
 			end
 		elseif not assistEnabled then
 			if player.in_combat == true and player.status ~= 1 then		--If there's a party claimed mob
-				sc_safe_send_command('input /ta <bt>')
+				windower.send_command('input /ta <bt>')
 				if windower.ffxi.get_mob_by_target('t') and windower.ffxi.get_mob_by_target('t').claim_id ~= 0 and not check_blist_target(windower.ffxi.get_mob_by_target('t').name) then
 					engagetarget = packets.new('outgoing', 0x01A, {
 						['Target'] = windower.ffxi.get_mob_by_target('t').id,
 						['Target Index'] = windower.ffxi.get_mob_by_target('t').index,
 						['Category'] = 0x02,
 					})
-					sc_safe_inject(engagetarget)
+					packets.inject(engagetarget)
 				end
 				if player.status == 1 then
 					in_combat = true
@@ -550,7 +482,7 @@ windower.register_event('prerender', function()
 					['Target Index'] = windower.ffxi.get_mob_by_id(mob_id).index,
 					['Category'] = 0x02,
 				})	
-				sc_safe_inject(engagetarget)
+				packets.inject(engagetarget)
 				if player.status == 1 then
 					in_combat = true
 				end
@@ -564,7 +496,7 @@ windower.register_event('prerender', function()
 					['Target Index'] = windower.ffxi.get_mob_by_target('t').index,
 					['Category'] = 0x04,
 				})
-				sc_safe_inject(disengagetarget)
+				packets.inject(disengagetarget)
 			elseif player.status == 1 and player.target_index and windower.ffxi.get_mob_by_index(player.target_index) and windower.ffxi.get_mob_by_index(player.target_index).hpp >= 1 then		--If we're engaged in combat
 				if windower.ffxi.get_mob_by_target('t') and windower.ffxi.get_mob_by_target('t').id ~= current_mob then
 					ws_turn = 1
@@ -578,7 +510,7 @@ windower.register_event('prerender', function()
 					['Target Index'] = windower.ffxi.get_mob_by_target('t').index,
 					['Category'] = 0x04,
 				})	
-				sc_safe_inject(disengagetarget)
+				packets.inject(disengagetarget)
 			else					--Reset flags when out of combat
 				in_combat = false
 				mob_id = 0
@@ -599,17 +531,17 @@ windower.register_event('prerender', function()
 				end
 				if runtomob == 'on' then
 					if math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 20 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) >= 4 and player.status == 1 then
-						sc_safe_run(true)
+						windower.ffxi.run(true)
 					else
-						sc_safe_run(false)
+						windower.ffxi.run(false)
 					end
 				end
 				if use_am == 'on' and not isBuffActive(272) and self_SC == 'off' then	--Put up AM
 					if player.vitals.tp == 3000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) < ws_list[AM_WS].range then
 						useWS(AM_WS, '<t>')
 					end
-				elseif use_ws == 'on' and sc_job_has_ws() and player.vitals.tp >= tp_threshold and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) < ws_list[sc_job_ws_a()].range and self_SC == 'off' then	--WS all the things
-					useWS(sc_job_ws_a(), '<t>')
+				elseif use_ws == 'on' and player.vitals.tp >= tp_threshold and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) < ws_list[job_ws_list[job].ws_a].range and self_SC == 'off' then	--WS all the things
+					useWS(job_ws_list[job].ws_a, '<t>')
 				elseif self_SC == 'on' and player.vitals.tp >= 1000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) < ws_list[self_sc(job, ws_turn)].range then	--Doing the multi step thang... or gonna try
 					if self_sc(job, ws_turn) ~= 0 then
 						useWS(ws_list[self_sc(job, ws_turn)].en, '<t>')
@@ -619,34 +551,34 @@ windower.register_event('prerender', function()
 					useRA('<t>')
 				end
 				
-			elseif party_size == 2 and sc_job_has_party_ws() then		--If in a party
+			elseif party_size == 2 then		--If in a party
 				if party_member == 1 and recasts[5] and recasts[5] == 0 and windower.ffxi.get_mob_by_target('t').hpp >= 90 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 13 and voke == 'on' then	--Player 1 vokes
 					useJA('Provoke', '<t>')
 				end
 				if runtomob == 'on' then
 					if math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 20 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) >= 4 and player.status == 1 then
-						sc_safe_run(true)
+						windower.ffxi.run(true)
 					else
-						sc_safe_run(false)
+						windower.ffxi.run(false)
 					end
 				end
 			
 				if player.vitals.tp >= 1000 and math.sqrt(windower.ffxi.get_mob_by_target('t').distance) <= 7 then
 					if party_member == 1 then		--If you're party member 1
 						if ws_turn == 1 and windower.ffxi.get_party().p1.tp >= 700 then
-							useWS(sc_job_ws_b(), '<t>')
+							useWS(job_ws_list[job].ws_b, '<t>')
 						elseif ws_turn == 3 then
-							useWS(sc_job_ws_a(), '<t>')
+							useWS(job_ws_list[job].ws_a, '<t>')
 						elseif ws_turn == 5 then
-							useWS(sc_job_ws_b(), '<t>')
+							useWS(job_ws_list[job].ws_b, '<t>')
 						end
 					elseif party_member == 2 then	--If you're party member 2
 						if ws_turn == 2 then
-							useWS(sc_job_ws_b(), '<t>')
+							useWS(job_ws_list[job].ws_b, '<t>')
 						elseif ws_turn == 4 and windower.ffxi.get_party().p1.tp >= 700 then
-							useWS(sc_job_ws_b(), '<t>')
+							useWS(job_ws_list[job].ws_b, '<t>')
 						elseif ws_turn == 6 then
-							useWS(sc_job_ws_a(), '<t>')
+							useWS(job_ws_list[job].ws_a, '<t>')
 						end
 					end
 				end
@@ -719,7 +651,7 @@ windower.register_event('incoming chunk', function(id, data, modified, injected,
 					['Target Index'] = windower.ffxi.get_mob_by_target('t').index,
 					['Category'] = 0x04,
 				})	
-				sc_safe_inject(disengagetarget)
+				packets.inject(disengagetarget)
 			end
 		end
 	end
@@ -738,7 +670,7 @@ windower.register_event('action', function(act)	--Grab the ID of the mob attacki
 	
 	--elseif mob_id == act.actor_id and not checkTargets(act.targets) and player.status == 1 and windower.ffxi.get_mob_by_target('t') and windower.ffxi.get_mob_by_target('t').id == mob_id then
 		--mob_id = 0
-		--sc_safe_send_command('input /a off')
+		--windower.send_command('input /a off')
 	end
 	if party_size == 1 then
 		if act.actor_id == player.id and act.category == 7 then
@@ -754,7 +686,7 @@ windower.register_event('action', function(act)	--Grab the ID of the mob attacki
 		end
 	end
 	
-	if party_size == 2 and sc_job_has_party_ws() then
+	if party_size == 2 then
 		--if AM_flag_other == 1 and her_fucking_AM == 0 and AM_override == 'off' then		--When party member uses their AM weaponskill, set flag, set the time and reset the WS turn to 1
 			--if party.party1_count > 1 and windower.ffxi.get_info().zone == party.p1.zone and act.actor_id == windower.ffxi.get_mob_by_name(party.p1.name).id and ws_id == ws_list[AM_WS_other].id and message == 185 then
 				--ws_turn = 1
@@ -771,7 +703,7 @@ windower.register_event('action', function(act)	--Grab the ID of the mob attacki
 			--end
 		--end
 		if ws_turn == 1 then	--Cycle through weaponskill turns
-			if act.actor_id == player.id and ws_id == ws_list[sc_job_ws_b()].id and party_member == 1 and message == 185 then
+			if act.actor_id == player.id and ws_id == ws_list[job_ws_list[job].ws_b].id and party_member == 1 and message == 185 then
 				ws_turn = 2
 				delay = 3
 				ws_id = 0
@@ -788,14 +720,14 @@ windower.register_event('action', function(act)	--Grab the ID of the mob attacki
 				delay = 3
 				ws_id = 0
 				message = 0
-			elseif act.actor_id == player.id and ws_id == ws_list[sc_job_ws_b()].id and party_member == 2 and message == 185 then
+			elseif act.actor_id == player.id and ws_id == ws_list[job_ws_list[job].ws_b].id and party_member == 2 and message == 185 then
 				ws_turn = 3
 				delay = 3
 				ws_id = 0
 				message = 0
 			end
 		elseif ws_turn == 3 then
-			if act.actor_id == player.id and ws_id == ws_list[sc_job_ws_a()].id and party_size == 2 and party_member == 1 and message == 185 then
+			if act.actor_id == player.id and ws_id == ws_list[job_ws_list[job].ws_a].id and party_size == 2 and party_member == 1 and message == 185 then
 				ws_turn = 4
 				delay = 3
 				ws_id = 0
@@ -812,14 +744,14 @@ windower.register_event('action', function(act)	--Grab the ID of the mob attacki
 				delay = 3
 				ws_id = 0
 				message = 0
-			elseif act.actor_id == player.id and ws_id == ws_list[sc_job_ws_b()].id and party_size == 2 and party_member == 2 and message == 185 then
+			elseif act.actor_id == player.id and ws_id == ws_list[job_ws_list[job].ws_b].id and party_size == 2 and party_member == 2 and message == 185 then
 				ws_turn = 5
 				delay = 3
 				ws_id = 0
 				message = 0
 			end
 		elseif ws_turn == 5 then
-			if act.actor_id == player.id and ws_id == ws_list[sc_job_ws_b()].id and party_size == 2 and party_member == 1 and message == 185 then
+			if act.actor_id == player.id and ws_id == ws_list[job_ws_list[job].ws_b].id and party_size == 2 and party_member == 1 and message == 185 then
 				ws_turn = 6
 				delay = 3
 				ws_id = 0
@@ -836,7 +768,7 @@ windower.register_event('action', function(act)	--Grab the ID of the mob attacki
 				delay = 3
 				ws_id = 0
 				message = 0
-			elseif act.actor_id == player.id and ws_id == ws_list[sc_job_ws_a()].id and party_size == 2 and party_member == 2 and message == 185 then
+			elseif act.actor_id == player.id and ws_id == ws_list[job_ws_list[job].ws_a].id and party_size == 2 and party_member == 2 and message == 185 then
 				ws_turn = 1
 				delay = 3
 				ws_id = 0
@@ -1059,7 +991,7 @@ function getNewMob(aggro_mob_id)
 			['Target Index'] = windower.ffxi.get_mob_by_id(aggro_mob_id).index,
 			['Category'] = 0x02,
 		})
-		sc_safe_inject(pullmob)
+		packets.inject(pullmob)
 		delay = 1.2
 	elseif aggro_mob_id == 0 then
 		local function find_closest(require_list)
@@ -1090,7 +1022,7 @@ function getNewMob(aggro_mob_id)
 						['Target Index'] = windower.ffxi.get_mob_by_id(closestmob).index,
 						['Category'] = 0x02,
 					})
-					sc_safe_inject(pullmob)
+					packets.inject(pullmob)
 					delay = 1
 				else
 					autopull_target = closestmob
@@ -1106,7 +1038,7 @@ function getNewMob(aggro_mob_id)
 					--['Param']
 					['_unknown1'] = 0,
 				})
-				sc_safe_inject(pullmob)
+				packets.inject(pullmob)
 				delay = 1.5
 				return
 			elseif mobdistance <= 17.8 and recasts[5] and recasts[5] == 0 and (job == 'WAR' or subjob == 'WAR') then
@@ -1117,7 +1049,7 @@ function getNewMob(aggro_mob_id)
 					['Param'] = 35,		--Provoke
 					['_unknown1'] = 0,
 				})
-				sc_safe_inject(pullmob)
+				packets.inject(pullmob)
 				delay = 1
 				return
 			elseif mobdistance <= 20 and spell_recasts[24] and spell_recasts[24] == 0 and (job == 'WHM' or job == 'SCH' or job == 'RDM' or subjob == 'WHM' or subjob == 'SCH' or subjob == 'RDM') then
@@ -1128,7 +1060,7 @@ function getNewMob(aggro_mob_id)
 					['Param'] = 24,		--Dia II
 					['_unknown1'] = 0,
 				})
-				sc_safe_inject(pullmob)
+				packets.inject(pullmob)
 				delay = 1
 				return
 			else
@@ -1139,7 +1071,7 @@ function getNewMob(aggro_mob_id)
 						['Target Index'] = windower.ffxi.get_mob_by_id(closestmob).index,
 						['Category'] = 0x02,
 					})
-					sc_safe_inject(pullmob)
+					packets.inject(pullmob)
 					delay = 1
 					return
 				end
@@ -1345,7 +1277,7 @@ windower.register_event('addon command', function(...)
 		if command[2] then
 			local mainws = ws_list[command[2]]
 			if mainws then
-				sc_get_job_ws().ws_a = command[2]:ucfirst()
+				job_ws_list[job].ws_a = command[2]:ucfirst()
 				windower.add_to_chat(7, 'Main weaponskill changed to '..command[2]:ucfirst())
 			else
 				windower.add_to_chat(7, 'Unable to update main weaponskill to '..command[2]:ucfirst().. ' - please check spelling')
@@ -1356,7 +1288,7 @@ windower.register_event('addon command', function(...)
 		if command[2] then
 			local subws = ws_list[command[2]]
 			if subws then
-				sc_get_job_ws().ws_b = command[2]:ucfirst()
+				job_ws_list[job].ws_b = command[2]:ucfirst()
 				windower.add_to_chat(7, 'Sub weaponskill changed to '..command[2]:ucfirst())
 			else
 				windower.add_to_chat(7, 'Unable to update sub weaponskill to '..command[2]:ucfirst().. ' - please check spelling')
@@ -1505,11 +1437,6 @@ windower.register_event('mouse', function(type, x, y, delta, blocked)
 		end
 	end
 end)
-
-
-
-
-
 
 
 

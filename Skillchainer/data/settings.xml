@@ -41,9 +41,14 @@
     </global>
     <aragan>
         <pos>
-            <x>955</x>
-            <y>386</y>
+            <x>910.62707519531</x>
+            <y>244.48950195312</y>
         </pos>
+        <text>
+            <fonts>
+
+            </fonts>
+        </text>
     </aragan>
     <miyamizu>
         <pos>
